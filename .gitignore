@@ -1,0 +1,33 @@
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Java / Maven
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+*.log
+
+# Node / frontend
+node_modules/
+.angular/
+*.tsbuildinfo
+dist/
+build/
+.vite/
+.npm/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Prostredie a secrety
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,648 @@
+================================================================================
+VYSVETLENIE BACKENDU RIADOK PO RIADKU - SIM/eSIM Lifecycle Manager
+================================================================================
+
+Tento súbor je vytvorený výhradne na obhajobu backend časti projektu.
+Všetko je vysvetlené čo najpodrobnejšie, riadok po riadku.
+
+Technológie: Java 21, Spring Boot 3.3.4, Spring Web, Spring Data JPA, Spring Security,
+Spring Validation, PostgreSQL, Flyway, JJWT, BCrypt
+
+================================================================================
+1. backend/pom.xml
+================================================================================
+
+<?xml version="1.0" encoding="UTF-8"?>
+- Štandardné XML hlavička pre Maven projekt
+
+<project ...>
+- Koreňový element projektu
+
+<modelVersion>4.0.0</modelVersion> -> Verzia POM modelu
+
+<parent> -> Dedí konfiguráciu od spring-boot-starter-parent
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.3.4</version> -> Použitá verzia Spring Bootu
+    <relativePath/> -> Hľadá parent v lokálnom repozitári
+
+<groupId>sk.kosickaakademia</groupId> -> Balíkový prefix
+<artifactId>sim-esim-manager</artifactId> -> Názov artefaktu
+<version>0.0.1-SNAPSHOT</version> -> Verzia projektu
+<name>sim-esim-manager</name>
+<description>SIM/eSIM Lifecycle Manager - školský projekt</description>
+
+<properties>
+    <java.version>21</java.version> -> Používame JDK 21
+    <jjwt.version>0.12.6</jjwt.version> -> Verzia knižnice na JWT
+</properties>
+
+<dependencies> - Zoznam všetkých knižníc
+
+1. spring-boot-starter-web
+   - Obsahuje Tomcat, Spring MVC, Jackson (na JSON <-> Java)
+   - Potrebné na tvorbu REST kontrolérov (@RestController)
+
+2. spring-boot-starter-data-jpa
+   - Obsahuje Hibernate, Spring Data JPA
+   - Umožňuje mapovanie Java tried na DB tabuľky (@Entity) a prácu s repozitármi
+
+3. spring-boot-starter-validation
+   - Obsahuje Hibernate Validator
+   - Umožňuje anotácie @Valid, @NotBlank, @Email, @Size
+
+4. spring-boot-starter-security
+   - Celá konfigurácia autentifikácie a autorizácie
+   - Filtre, AuthenticationManager, PasswordEncoder
+
+5. postgresql
+   - JDBC ovládač na pripojenie k PostgreSQL DB
+   - <scope>runtime</scope> -> potrebuje sa len pri behu aplikácie
+
+6. flyway-core + flyway-database-postgresql
+   - Nástroj na verzovanie schémy databázy
+   - Vďaka tomu tabuľky nevytvárame cez hibernate.ddl-auto=create/update, len cez SQL migrácie
+
+7. jjwt-api, jjwt-impl, jjwt-jackson
+   - Na vytvorenie, podpis a validáciu JWT tokenov
+   - api = rozhrania, impl = implementácia, jackson = serializácia claims
+
+8. spring-boot-devtools (optional)
+   - Automatické reštarty pri zmene kódu, len pre development
+
+9. spring-boot-starter-test, spring-security-test
+   - Na testy (v tomto projekte ich využívame minimálne, no sú súčasťou štandardnej konfigurácie)
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId> -> Umožňuje spustiť aplikáciu cez mvn spring-boot:run
+        </plugin>
+    </plugins>
+</build>
+
+
+================================================================================
+2. SimEsimApplication.java
+================================================================================
+
+package sk.kosickaakademia.simesim;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class SimEsimApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(SimEsimApplication.class, args);
+    }
+}
+
+Vysvetlenie:
+
+- @SpringBootApplication je zložená anotácia:
+  - @Configuration -> trieda obsahuje @Bean definície
+  - @EnableAutoConfiguration -> Spring Boot automaticky konfiguruje veci na základe classpath (napr. DataSource, Security)
+  - @ComponentScan -> prehľadáva balík sk.kosickaakademia.simesim a všetky podbalíky a nájde @Component, @Service, @Repository, @RestController, @Configuration
+
+- public static void main(String[] args) -> vstupný bod Java aplikácie
+- SpringApplication.run(SimEsimApplication.class, args) -> spustí embedded Tomcat, vytvorí ApplicationContext, spustí CommandLineRunnery (náš DataInitializer), aplikuje konfiguráciu
+
+
+================================================================================
+3. application.properties
+================================================================================
+
+# SERVER
+server.port=8080
+-> Backend beží na porte 8080
+
+# DATASOURCE - PostgreSQL
+spring.datasource.url=jdbc:postgresql://localhost:5432/simesim_db
+spring.datasource.username=simesim_user
+spring.datasource.password=simesim_pass
+spring.datasource.driver-class-name=org.postgresql.Driver
+-> Nastavenia na pripojenie k DB, ktorá beží cez docker-compose
+
+# JPA / HIBERNATE
+spring.jpa.hibernate.ddl-auto=none
+-> Dôležité! Nevytvárame/neupravujeme schému cez Hibernate. Tú máme plne pod kontrolou cez Flyway
+spring.jpa.show-sql=false
+-> Vypnuté logovanie SQL dotazov (menej šumu v konzole)
+spring.jpa.properties.hibernate.format_sql=true
+-> Ak by sme show-sql zapli, SQL by bol pekne formátovaný
+spring.jpa.open-in-view=false
+-> Odporúčané nastavenie. Zabráni "lazy loading" mimo transakcie a zbytočným dotazom
+
+# FLYWAY
+spring.flyway.enabled=true
+spring.flyway.locations=classpath:db/migration
+-> Flyway hľadá SQL súbory v src/main/resources/db/migration/
+spring.flyway.baseline-on-migrate=true
+-> Umožní aplikovať migrácie aj na už existujúcu DB (bezpečné pre lokálne spustenie)
+
+# JWT
+app.jwt.secret=sk-kosicka-akademia-sim-esim-lifecycle-manager-secret-key-2026-very-long
+app.jwt.expiration-ms=86400000
+-> Tajný kľúč na podpis tokenu. 86400000 ms = 24 hodín
+
+# CORS
+app.cors.allowed-origins=http://localhost:4200
+-> Povolený pôvod pre Angular frontend
+
+
+================================================================================
+4. MODEL - ENTITKY A ENUMY
+================================================================================
+
+4.1 SimType.java (enum)
+package sk.kosickaakademia.simesim.model;
+public enum SimType { PHYSICAL, ESIM }
+-> Reprezentuje typ SIM karty
+
+4.2 SimStatus.java (enum)
+public enum SimStatus { IN_STOCK, RESERVED, ASSIGNED, ACTIVE, SUSPENDED, TERMINATED }
+-> Reprezentuje stav SIM karty
+
+4.3 Customer.java
+@Entity -> Označuje, že trieda je entita spravovaná Hibernate
+@Table(name = "customers") -> Mapovanie na tabuľku customers
+
+@Id -> Primárny kľúč
+@GeneratedValue(strategy = GenerationType.IDENTITY) -> Hodnota sa generuje DB (BIGSERIAL/IDENTITY)
+
+@Column(name = "first_name", nullable = false, length = 50) -> Mapovanie na stĺpec s obmedzeniami
+@Column(nullable = false, unique = true, length = 100) pre email
+
+@PrePersist
+protected void onCreate() {
+    createdAt = LocalDateTime.now();
+    updatedAt = LocalDateTime.now();
+}
+-> Volá sa AUTOMATICKY pred prvým uložením do DB. Nastavuje časové údaje
+
+@PreUpdate
+protected void onUpdate() {
+    updatedAt = LocalDateTime.now();
+}
+-> Volá sa AUTOMATICKY pred aktualizáciou záznamu
+
+4.4 SimCard.java
+@Entity
+@Table(name = "sim_cards")
+
+@Enumerated(EnumType.STRING)
+@Column(nullable = false, length = 10)
+private SimType type;
+-> Uloží sa ako reťazec "PHYSICAL"/"ESIM", nie ako 0/1. Čitateľnejšie.
+
+@ManyToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "customer_id")
+private Customer customer;
+-> Vzťah N:1. LAZY znamená, že objekt Customer sa načíta až keď ho naozaj použijeme (efektívnejšie)
+@JoinColumn určuje názov cudzieho kľúča
+
+@PrePersist -> ak status nie je nastavený, defaultne IN_STOCK
+
+4.5 AppUser.java
+@Entity
+@Table(name = "app_users")
+private String username; // unikátne
+private String password; // ULOŽENÉ AKO BCRYPT HASH
+private String role;     // napr. ROLE_ADMIN
+
+
+================================================================================
+5. REPOZITÁRE
+================================================================================
+
+Všetky sú v balíku repository a rozširujú JpaRepository<T, ID>.
+
+public interface SimCardRepository extends JpaRepository<SimCard, Long> {
+    boolean existsByIccid(String iccid);
+    Optional<SimCard> findByIccid(String iccid);
+}
+
+- JpaRepository poskytuje: findAll(), findById(), save(), deleteById(), existsById(), count()...
+- Spring Data JPA automaticky implementuje metódy podľa názvu (query derivation)
+- existsByIccid -> vygeneruje "SELECT COUNT(*) > 0 FROM sim_cards WHERE iccid = ?"
+- Optional<SimCard> -> zabraňuje NullPointerException, núti nás riešiť prípad, že záznam neexistuje
+
+Rovnaké princípy platia pre CustomerRepository a AppUserRepository.
+
+
+================================================================================
+6. DTO
+================================================================================
+
+Dôvod použitia DTO:
+- Nechceme posielať entity priamo na frontend (môžu obsahovať citlivé údaje / cyklické referencie)
+- Môžeme poslať len potrebné polia
+- Validácia vstupu oddelená od entity
+- Jasnejší kontrakt medzi FE a BE
+
+6.1 LoginRequest.java
+@NotBlank -> pole nesmie byť prázdne ani len medzery
+Používa sa pri @Valid v AuthController
+
+6.2 LoginResponse.java
+Obsahuje token, username, role. Token je JWT vygenerovaný na backendu.
+
+6.3 SimCardRequest.java
+@NotBlank(message = "...") pre iccid
+@Size(min=19, max=22) na kontrolu dĺžky ICCID
+@NotNull pre type
+customerId je Long (môže byť null)
+
+6.4 SimCardResponse.java
+Obsahuje customerId a customerName -> frontend ich zobrazí priamo v tabuľke bez ďalšieho volania
+
+6.5 CustomerRequest.java
+@NotBlank pre meno/priezvisko/email
+@Email -> kontrola formátu emailu
+@Size na obmedzenie dĺžky
+
+6.6 CustomerResponse.java
+Vracia kompletné údaje zákazníka
+
+
+================================================================================
+7. VÝNIMKY A GLOBAL EXCEPTION HANDLER
+================================================================================
+
+7.1 ResourceNotFoundException.java
+public class ResourceNotFoundException extends RuntimeException {
+    public ResourceNotFoundException(String message) { super(message); }
+}
+-> Používame keď napr. findById nevráti nič
+
+7.2 ApiException.java
+Rovnaké, no použitie na biznis pravidlá (duplicitný záznam)
+
+7.3 GlobalExceptionHandler.java
+@RestControllerAdvice -> platí pre VŠETKY @RestController
+@Component spracovanie výnimiek
+
+@ExceptionHandler(ResourceNotFoundException.class)
+    -> vytvorí Mapu s timestamp, status:404, error:"Not Found", message
+    -> vráti ResponseEntity s HttpStatus.NOT_FOUND
+
+@ExceptionHandler(ApiException.class)
+    -> status:400 BAD_REQUEST
+
+@ExceptionHandler(MethodArgumentNotValidException.class)
+    -> iteruje cez bindingResult.getAllErrors()
+    -> pre každé pole spraví záznam field -> message
+    -> pridá "errors" mapu do odpovede
+    -> frontend tak vie zobraziť presnú chybu ku danému poli
+
+@ExceptionHandler(Exception.class)
+    -> posledný fallback, nikdy nezobrazujeme detailnú stack trace správu
+
+Výsledok: frontend dostane ČISTÝ JSON s user-friendly message, čo využíva náš error.interceptor.
+
+
+================================================================================
+8. BEZPEČNOSŤ - JWT
+================================================================================
+
+8.1 JwtUtil.java
+
+@Value("${app.jwt.secret}") private String secret;
+@Value("${app.jwt.expiration-ms}") private long expirationMs;
+
+private SecretKey getSigningKey() {
+    return Keys.hmacShaKeyFor(secret.getBytes());
+}
+-> Vytvorí HMAC-SHA kľúč z nášho tajného reťazca
+
+public String generateToken(String username) {
+    Date now = new Date();
+    Date expiryDate = new Date(now.getTime() + expirationMs);
+    return Jwts.builder()
+        .subject(username)      // v claim-e "sub" uložíme username
+        .issuedAt(now)          // kedy bol vydaný
+        .expiration(expiryDate) // kedy expiruje
+        .signWith(getSigningKey()) // podpísanie
+        .compact();             // prevedie na reťazec
+}
+
+public String extractUsername(String token) {
+    return extractClaim(token, Claims::getSubject);
+}
+
+public boolean isTokenValid(String token, String username) {
+    final String extractedUsername = extractUsername(token);
+    return (extractedUsername.equals(username) && !isTokenExpired(token));
+}
+
+private Claims extractAllClaims(String token) {
+    return Jwts.parser()
+        .verifyWith(getSigningKey()) // overí podpis
+        .build()
+        .parseSignedClaims(token)    // parsuje a verifikuje
+        .getPayload();               // vráti claims
+}
+-> Ak je podpis poškodený/nesprávny, Jwts vyhodí výnimku
+
+
+================================================================================
+9. SPRING SECURITY INTEGRÁCIA
+================================================================================
+
+9.1 UserDetailsServiceImpl.java
+@Service
+implements UserDetailsService
+
+@Override
+public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+    AppUser appUser = appUserRepository.findByUsername(username)
+        .orElseThrow(() -> new UsernameNotFoundException("Používateľ " + username + " nebol nájdený"));
+    return new User(
+        appUser.getUsername(),
+        appUser.getPassword(), // už je BCrypt hash
+        Collections.singletonList(new SimpleGrantedAuthority(appUser.getRole()))
+    );
+}
+-> Spring Security volá túto metódu pri autentifikácii. Porovná zadané heslo s hashom cez PasswordEncoder.
+
+9.2 JwtAuthFilter.java
+@Component
+extends OncePerRequestFilter -> zaručuje, že sa filter vykoná presne raz na HTTP request
+
+@Override
+protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ... {
+    final String authHeader = request.getHeader("Authorization");
+    String username = null;
+    String jwt = null;
+    
+    if (authHeader != null && authHeader.startsWith("Bearer ")) {
+        jwt = authHeader.substring(7); // odoberie "Bearer "
+        try { username = jwtUtil.extractUsername(jwt); } catch (Exception e) { /* ignorujeme, token neplatný */ }
+    }
+    
+    if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+        UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+        if (jwtUtil.isTokenValid(jwt, userDetails.getUsername())) {
+            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                userDetails, null, userDetails.getAuthorities()
+            );
+            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(authToken); // nastavenie autentifikácie
+        }
+    }
+    filterChain.doFilter(request, response); // pokračuje ďalej
+}
+-> Ak je token validný, užívateľ je považovaný za prihláseného na úrovni Spring Security
+
+9.3 config/SecurityConfig.java
+
+@Configuration
+@EnableWebSecurity
+
+@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    http
+        .csrf(csrf -> csrf.disable()) // nepoužívame session cookies na CSRF
+        .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers("/api/auth/**").permitAll() // login je verejný
+            .anyRequest().authenticated()                // ostatné vyžadujú autentifikáciu
+        )
+        .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        -> ŽIADNE HTTP SESSION. Všetko cez JWT
+        .authenticationProvider(authenticationProvider())
+        .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+        -> Náš filter sa vykoná PRED štandardným UsernamePasswordAuthenticationFilter
+    return http.build();
+}
+
+@Bean
+public AuthenticationProvider authenticationProvider() {
+    DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+    authProvider.setUserDetailsService(userDetailsService);
+    authProvider.setPasswordEncoder(passwordEncoder());
+    return authProvider;
+}
+-> DaoAuthenticationProvider použije náš UserDetailsServiceImpl + BCrypt na overenie hesla
+
+@Bean
+public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+    return config.getAuthenticationManager();
+}
+-> Potrebný v AuthController na autentifikáciu pri logine
+
+@Bean
+public PasswordEncoder passwordEncoder() {
+    return new BCryptPasswordEncoder();
+}
+-> Heslá sa nikdy neukladajú v plain texte. Pri registrácii/initializácii sa hashujú.
+
+@Bean
+public CorsConfigurationSource corsConfigurationSource() {
+    CorsConfiguration configuration = new CorsConfiguration();
+    configuration.setAllowedOrigins(List.of(allowedOrigins)); // http://localhost:4200
+    configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+    configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+    configuration.setAllowCredentials(true);
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", configuration);
+    return source;
+}
+-> Umožňuje Angularu volanie nášho backendu z iného portu
+
+9.4 config/DataInitializer.java
+@Configuration
+
+@Bean
+CommandLineRunner initAdminUser(...) {
+    return args -> {
+        AppUser admin = appUserRepository.findByUsername("admin").orElse(null);
+        if (admin == null) {
+            admin = new AppUser();
+            admin.setUsername("admin");
+            admin.setRole("ROLE_ADMIN");
+        }
+        admin.setPassword(passwordEncoder.encode("admin123")); // VŽDY správny hash
+        appUserRepository.save(admin);
+    };
+}
+-> Spustí sa po načítaní ApplicationContextu. Zaručuje, že používateľ admin má vždy funkčné heslo.
+
+
+================================================================================
+10. SERVISY
+================================================================================
+
+10.1 SimCardService.java
+@Service
+Klasická vrstva business logiky.
+
+@Transactional(readOnly = true) pre getAll(), getById() -> optimalizácia, len čítanie
+@Transactional pre create(), update(), delete() -> všetko v jednej transakcii
+
+create(SimCardRequest request):
+- if (simCardRepository.existsByIccid(request.getIccid())) throw new ApiException("SIM karta s týmto ICCID už existuje");
+- vytvorí novú SimCard entitu, nastaví polia
+- ak request.getCustomerId() != null -> nájde Customer, inak vyhodí ResourceNotFoundException
+- ak status null -> v @PrePersist sa nastaví IN_STOCK (alebo môžeme nastaviť manuálne)
+- simCardRepository.save(simCard)
+- vráti toResponse()
+
+update(Long id, SimCardRequest request):
+- nájde entitu, ak neexistuje -> ResourceNotFoundException
+- kontrola duplicity len ak sa ICCID MENÍ: !simCard.getIccid().equals(request.getIccid()) && existsByIccid(...)
+- ak customerId null -> simCard.setCustomer(null) (odpojenie)
+- inak priradí existujúceho zákazníka
+
+delete(Long id):
+- overí existenciu, inak ResourceNotFoundException
+- simCardRepository.deleteById(id)
+
+toResponse(SimCard simCard):
+- mapuje entity -> DTO
+- ak je priradený zákazník, vypočíta customerName = firstName + " " + lastName
+
+10.2 CustomerService.java
+Podobný princíp.
+Kontrola duplicity emailu pri create/update
+create/update/delete + toResponse
+
+
+================================================================================
+11. KONTROLÉRY
+================================================================================
+
+11.1 AuthController.java
+@RestController
+@RequestMapping("/api/auth")
+
+@Autowired/constructor injection -> AuthenticationManager, JwtUtil
+
+@PostMapping("/login")
+public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+    Authentication authentication = authenticationManager.authenticate(
+        new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
+    );
+    // authenticationManager použije DaoAuthenticationProvider -> volá UserDetailsServiceImpl -> porovná heslo cez BCrypt
+    UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+    String token = jwtUtil.generateToken(userDetails.getUsername());
+    String role = userDetails.getAuthorities().stream().findFirst().map(a->a.getAuthority()).orElse("ROLE_USER");
+    return ResponseEntity.ok(new LoginResponse(token, userDetails.getUsername(), role));
+}
+-> Ak sú údaje nesprávne, AuthenticationManager vyhodí BadCredentialsException (zachytí sa cez GlobalExceptionHandler ako všeobecná chyba, čo je v poriadku)
+
+11.2 SimCardController.java
+@RequestMapping("/api/sims")
+@GetMapping -> getAll()
+@GetMapping("/{id}") -> getById(@PathVariable Long id)
+@PostMapping -> @Valid @RequestBody SimCardRequest + HttpStatus.CREATED (201)
+@PutMapping("/{id}") -> update
+@DeleteMapping("/{id}") -> delete + ResponseEntity.noContent().build() (204)
+
+11.3 CustomerController.java
+Analogické pre /api/customers
+
+
+================================================================================
+12. FLYWAY MIGRÁCIE
+================================================================================
+
+12.1 V1__init_schema.sql
+CREATE TABLE app_users (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL
+);
+
+CREATE TABLE customers (
+    id BIGSERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    phone VARCHAR(20),
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP
+);
+
+CREATE TABLE sim_cards (
+    id BIGSERIAL PRIMARY KEY,
+    iccid VARCHAR(22) NOT NULL UNIQUE,
+    imsi VARCHAR(15),
+    type VARCHAR(10) NOT NULL,
+    status VARCHAR(15) NOT NULL,
+    note VARCHAR(255),
+    customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP
+);
+
+CREATE INDEX idx_sim_cards_status ON sim_cards(status);
+CREATE INDEX idx_sim_cards_iccid ON sim_cards(iccid);
+CREATE INDEX idx_customers_email ON customers(email);
+
+Vysvetlenie:
+- BIGSERIAL = autoinkrementujúci BIGINT
+- UNIQUE na username, email, iccid
+- REFERENCES ... ON DELETE SET NULL -> zachováva integritu, nezmaže SIM kartu pri zmazaní zákazníka
+- INDEX-y na často používané stĺpce
+
+12.2 V2__insert_test_user_and_data.sql
+Vloží admina + zákazníkov + SIM karty na demonštráciu
+Heslo admina je tu v BCrypt tvare, no DataInitializer ho po štarte PREPÍŠE na správny hash pre "admin123"
+
+
+================================================================================
+13. CEĽKOVÝ TOK (AKO TO VŠETKO FUNGUJE)
+================================================================================
+
+PRIHLÁSENIE:
+1. Frontend pošle POST http://localhost:8080/api/auth/login {username:"admin", password:"admin123"}
+2. AuthController prijme @Valid LoginRequest
+3. authenticationManager.authenticate() -> volá DaoAuthenticationProvider
+4. DaoAuthenticationProvider volá UserDetailsServiceImpl.loadUserByUsername()
+5. Načíta AppUser z DB, vráti UserDetails s BCrypt hashom hesla
+6. PasswordEncoder (BCrypt) porovná zadané heslo s hashom -> OK
+7. AuthController vygeneruje JWT cez JwtUtil.generateToken()
+8. Vráti LoginResponse {token, username, role}
+9. Frontend uloží token do localStorage
+
+CHÁNENÝ REQUEST:
+1. Frontend pridá hlavičku Authorization: Bearer <token> cez auth.interceptor
+2. Request príde na backend
+3. JwtAuthFilter sa spustí (pred UsernamePasswordAuthenticationFilter)
+4. Extrahuje token, volá jwtUtil.extractUsername() a jwtUtil.isTokenValid()
+5. Ak OK -> načíta UserDetails cez UserDetailsServiceImpl a nastaví Authentication do SecurityContextHolder
+6. Požiadavka pokračuje do kontroléra (Spring Security vie, že je autentifikovaný)
+7. Ak token chýba/neplatný a endpoint nie je permitAll -> Security vráti 401/403
+
+CRUD:
+1. Frontend zavolá SimService.create() -> HttpClient POST /api/sims s JSON
+2. auth.interceptor pridá token
+3. JwtAuthFilter overí token
+4. SimCardController prijme @Valid SimCardRequest
+5. SimCardService urobí biznis logiku + kontrolu duplicít
+6. Uloží cez SimCardRepository (JPA/Hibernate)
+7. Vráti SimCardResponse
+8. Ak nastane chyba -> GlobalExceptionHandler vráti JSON s message -> error.interceptor zobrazí v DOM
+
+
+================================================================================
+14. ČO SA OPLATÍ NAUČIŤ NA OBAJUBU
+================================================================================
+
+NAJVÄČŠIE OTÁZKY SA ZVYČAJNE TÝKAJÚ:
+
+- "Prečo JWT a nie session?" -> Stateless, frontend+backend oddelené, token sa posiela v hlavičke
+- "Ako funguje JwtAuthFilter?" -> OncePerRequestFilter, extrahuje Bearer token, validuje, nastaví SecurityContext
+- "Prečo DTO a nie entity?" -> Ochrana, čistý kontrakt, menej dát
+- "Prečo BCrypt?" -> Heslá sa neukladajú otvorene, jednosmerné hashovanie
+- "Prečo Flyway?" -> Verzovanie schémy DB, reprodukovateľné, prehľadné
+- "Prečo @ManyToOne LAZY?" -> Efektívnejšie načítavanie, zabráni zbytočným JOIN-om
+- "Prečo @PrePersist/@PreUpdate?" -> Automatické časové pečiatky
+- "Rozdiel medzi @RestControllerAdvice a @ControllerAdvice?" -> @RestControllerAdvice = @ControllerAdvice + @ResponseBody
+
+**TIP:** Pri obhajobe NEOPISUJ celý súbor. Vyber 2-3 veci, ktoré najlepšie ovládaš (napr. JWT flow + CRUD + SecurityConfig) a vysvetli ich vlastnými slovami.
