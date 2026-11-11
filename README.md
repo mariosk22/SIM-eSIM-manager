@@ -35,7 +35,7 @@ Projekt sa skladá z 3 častí: **PostgreSQL (Docker)**, **Backend (Spring Boot)
 ### Krok 1: Naklonovanie repozitára
 
 ```bash
-git clone <tvoj-git-repo-url>
+git clone https://github.com/mariosk22/SIM-eSIM-manager
 cd sim-esim-lifecycle-manager
 ```
 
@@ -114,23 +114,7 @@ Po spustení backendu môžeš použiť nasledujúci testovací účet:
 
 Po úspešnom prihlásení sa token uloží do `localStorage` a bude automaticky posielaný cez `Authorization: Bearer <token>` pomocou `auth.interceptor`.
 
-## 5. Kde nájsť vysvetlenia na obhajobu
-
-**NAJMÄ DÔLEŽITÉ:** Celé podrobné vysvetlenie kódu riadok po riadku nájdeš v súbore:
-
-```text
-VYSVETLENIE_KODU_PRE_OBHAJUBU.txt
-```
-
-Ten súbor je generovaný priamo ku tomuto projektu a slúži na to, aby si vedel presne povedať:
-- čo robí ktorý súbor
-- čo robí daný riadok/kódový blok
-- prečo sa nachádza v projekte
-- ako spolu súvisia frontend + backend
-
-Odporúčam si ho prečítať **pred** prezentáciou/obhajobou.
-
-## 6. Splnené požiadavky zo zadania
+## 5. Splnené požiadavky zo zadania
 
 | Požiadavka | Stav |
 | --- | --- |
