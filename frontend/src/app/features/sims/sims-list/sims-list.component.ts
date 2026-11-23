@@ -31,7 +31,7 @@ import { Router } from '@angular/router';
           </thead>
           <tbody>
             @for (sim of sims; track sim.id) {
-              <app-sim-list-item [sim]="sim" (edit)="onEdit($event)" (delete)="onDelete($event)"></app-sim-list-item>
+              <tr app-sim-list-item [sim]="sim" (edit)="onEdit($event)" (delete)="onDelete($event)"></tr>
             }
             @if (sims.length === 0) {
               <tr>
