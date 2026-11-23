@@ -1,12 +1,12 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
+
 import { SimCard } from '../../../../core/models/sim-card.model';
 
 @Component({
-  selector: 'tr[app-sim-list-item]',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'tr[app-sim-list-item]',
+    imports: [],
+    changeDetection: ChangeDetectionStrategy.Eager,
+    template: `
       <td>{{ sim.iccid }}</td>
       <td>{{ sim.imsi || '-' }}</td>
       <td>{{ sim.type }}</td>

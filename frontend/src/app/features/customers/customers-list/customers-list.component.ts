@@ -1,14 +1,14 @@
-import { Component, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, inject, ChangeDetectionStrategy } from '@angular/core';
+
 import { RouterLink, Router } from '@angular/router';
 import { CustomerService } from '../../../core/services/customer.service';
 import { Customer } from '../../../core/models/customer.model';
 
 @Component({
-  selector: 'app-customers-list',
-  standalone: true,
-  imports: [CommonModule, RouterLink],
-  template: `
+    selector: 'app-customers-list',
+    imports: [RouterLink],
+    changeDetection: ChangeDetectionStrategy.Eager,
+    template: `
     <div class="container">
       <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">

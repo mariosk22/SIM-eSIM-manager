@@ -1,12 +1,11 @@
-import { Component, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
+
 import { ErrorService } from '../../../core/services/error.service';
 
 @Component({
-  selector: 'app-error-alert',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-error-alert',
+    imports: [],
+    template: `
     @if (errorService.error()) {
       <div class="error-alert">
         {{ errorService.error() }}
@@ -14,7 +13,8 @@ import { ErrorService } from '../../../core/services/error.service';
       </div>
     }
   `,
-  styles: [`
+    changeDetection: ChangeDetectionStrategy.Eager,
+    styles: [`
     .error-alert {
       background-color: #f8d7da;
       color: #721c24;

@@ -1,13 +1,12 @@
-import { Component, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
+
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../../core/auth/auth.service';
 
 @Component({
-  selector: 'app-navbar',
-  standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive],
-  template: `
+    selector: 'app-navbar',
+    imports: [RouterLink, RouterLinkActive],
+    template: `
     <nav class="navbar">
       <div class="nav-container">
         <div class="nav-brand">SIM/eSIM Manager</div>
@@ -25,7 +24,8 @@ import { AuthService } from '../../../core/auth/auth.service';
       </div>
     </nav>
   `,
-  styles: [`
+    changeDetection: ChangeDetectionStrategy.Eager,
+    styles: [`
     .navbar {
       background-color: #1976d2;
       color: white;

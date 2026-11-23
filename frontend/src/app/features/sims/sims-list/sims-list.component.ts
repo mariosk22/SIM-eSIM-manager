@@ -1,5 +1,5 @@
-import { Component, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, inject, ChangeDetectionStrategy } from '@angular/core';
+
 import { RouterLink } from '@angular/router';
 import { SimService } from '../../../core/services/sim.service';
 import { SimCard } from '../../../core/models/sim-card.model';
@@ -7,10 +7,10 @@ import { SimListItemComponent } from '../components/sim-list-item/sim-list-item.
 import { Router } from '@angular/router';
 
 @Component({
-  selector: 'app-sims-list',
-  standalone: true,
-  imports: [CommonModule, RouterLink, SimListItemComponent],
-  template: `
+    selector: 'app-sims-list',
+    imports: [RouterLink, SimListItemComponent],
+    changeDetection: ChangeDetectionStrategy.Eager,
+    template: `
     <div class="container">
       <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">

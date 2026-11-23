@@ -10,8 +10,9 @@ Pred spustením sa uisti, že máš nainštalované:
 
 | Nástroj | Verzia (odporúčaná) |
 | --- | --- |
-| [Node.js](https://nodejs.org/) | >= 20.x |
-| [Angular CLI](https://angular.io/cli) | >= 18.x |
+| [Node.js](https://nodejs.org/) | 22.22.3+ alebo 24.15.0+ alebo 26+ (podľa `engines` v `package.json`) |
+| [Angular CLI](https://angular.io/cli) | >= 22.x |
+| [TypeScript](https://www.typescriptlang.org/) | >= 6.0 < 6.1 (súčasť `package.json`) |
 | [JDK](https://adoptium.net/) | 21 |
 | [Maven](https://maven.apache.org/) | >= 3.9.x |
 | [Docker](https://www.docker.com/) / [Docker Desktop](https://www.docker.com/products/docker-desktop/) | aktuálna |
@@ -121,7 +122,7 @@ Po úspešnom prihlásení sa token uloží do `localStorage` a bude automaticky
 | Zobrazovanie zoznamu entít | ÁNO (`/sims`, `/customers`) |
 | Všetky CRUD operácie pre vlastné entity cez REST | ÁNO (`SimCard`, `Customer`) |
 | Prihlasovací formulár + uloženie prihlásenia cez `localStorage` + použitie autentifikácie | ÁNO (`login`, `AuthService`, `auth.interceptor`) |
-| Formuláre na pridanie/úpravu cez **signálne formuláre** + validátory | ÁNO (`sim-form`, `customer-form`) |
+| Formuláre na pridanie/úpravu cez **Signal Forms** + validátory (Angular 22) | ÁNO (`sim-form`, `customer-form`, `login` – `form()`, `[formField]`, `required()`, `email()`, `minLength()`, `maxLength()`) |
 | Odchytávanie všetkých chýb komunikácie so serverom + user-friendly text do DOM (nie do konzoly) | ÁNO (`error.interceptor`, `ErrorService`, `error-alert`) |
 | Použitie aspoň jedného route guardu | ÁNO (`auth.guard`) |
 | Komunikácia rodič-dieťa (`@Input`, `@Output`) | ÁNO (`sim-list-item` komponenta) |
@@ -133,11 +134,13 @@ Po úspešnom prihlásení sa token uloží do `localStorage` a bude automaticky
 
 1. Otvor `http://localhost:4200/login` a prihlás sa (`admin` / `admin123`)
 2. Choď do `SIM karty` -> vidíš zoznam načítaný zo servera
-3. Skús pridať novú SIM kartu cez formulár (používa **signálne formuláre** + validáciu)
+3. Skús pridať novú SIM kartu cez formulár (používa **Angular 22 Signal Forms** + validáciu)
 4. Prejdi na `Zákazníci` a vyskúšaj CRUD aj pre druhú entitu
 5. Skús získať chránenú stránku bez tokenu -> presmeruje ťa na `/login` (funguje `auth.guard`)
 6. V prípade chyby zo servera sa zobrazí **červený alert v DOM**, žiaden výpis do konzoly
 
 ## 8. Poznámka
+
+Frontend je postavený na **Angular 22.3** (Node 24, TypeScript 6.0) a formuláre sú implementované natívne cez **Signal Forms** (`@angular/forms/signals`), nie cez klasické Reactive Forms.
 
 Na Angular strane je dôraz kladený práve na tie požadované techniky. Doménové veci typu detailný lifecycle engine sú ponechané v jednoduchšej podobe, aby bol projekt priamo použiteľný pre toto školské zadanie.

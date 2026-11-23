@@ -1,50 +1,59 @@
-import { Component, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { FormField, form, required, email, maxLength } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CustomerService } from '../../../core/services/customer.service';
 import { CustomerRequest } from '../../../core/models/customer.model';
 
+interface CustomerFormModel {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+}
+
 @Component({
   selector: 'app-customer-form',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [FormField],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="container">
       <div class="card" style="max-width: 600px; margin: 20px auto;">
         <h2 style="margin-bottom: 20px;">{{ isEditMode ? 'Upraviť zákazníka' : 'Pridať zákazníka' }}</h2>
 
-        <form [formGroup]="customerForm" (ngSubmit)="onSubmit()">
+        <form (submit)="onSubmit($event)">
           <div class="form-group">
             <label for="firstName">Meno *</label>
-            <input id="firstName" type="text" formControlName="firstName">
-            @if (customerForm.get('firstName')?.invalid && customerForm.get('firstName')?.touched) {
-              <div class="error-text">Meno je povinné</div>
+            <input id="firstName" type="text" [formField]="customerForm.firstName">
+            @if (customerForm.firstName().touched() && customerForm.firstName().invalid()) {
+              <div class="error-text">Meno je povinné (max. 50 znakov)</div>
             }
           </div>
 
           <div class="form-group">
             <label for="lastName">Priezvisko *</label>
-            <input id="lastName" type="text" formControlName="lastName">
-            @if (customerForm.get('lastName')?.invalid && customerForm.get('lastName')?.touched) {
-              <div class="error-text">Priezvisko je povinné</div>
+            <input id="lastName" type="text" [formField]="customerForm.lastName">
+            @if (customerForm.lastName().touched() && customerForm.lastName().invalid()) {
+              <div class="error-text">Priezvisko je povinné (max. 50 znakov)</div>
             }
           </div>
 
           <div class="form-group">
             <label for="email">E-mail *</label>
-            <input id="email" type="email" formControlName="email">
-            @if (customerForm.get('email')?.invalid && customerForm.get('email')?.touched) {
-              <div class="error-text">Zadaj platný e-mail</div>
+            <input id="email" type="email" [formField]="customerForm.email">
+            @if (customerForm.email().touched() && customerForm.email().invalid()) {
+              <div class="error-text">Zadaj platný e-mail (max. 100 znakov)</div>
             }
           </div>
 
           <div class="form-group">
             <label for="phone">Telefón</label>
-            <input id="phone" type="text" formControlName="phone">
+            <input id="phone" type="text" [formField]="customerForm.phone">
+            @if (customerForm.phone().touched() && customerForm.phone().invalid()) {
+              <div class="error-text">Telefón môže mať max. 20 znakov</div>
+            }
           </div>
 
-          <button type="submit" class="btn btn-primary" style="margin-right: 10px;" [disabled]="customerForm.invalid">Uložiť</button>
+          <button type="submit" class="btn btn-primary" style="margin-right: 10px;" [disabled]="customerForm().invalid()">Uložiť</button>
           <button type="button" class="btn btn-secondary" (click)="cancel()">Zrušiť</button>
         </form>
       </div>
@@ -52,7 +61,6 @@ import { CustomerRequest } from '../../../core/models/customer.model';
   `
 })
 export class CustomerFormComponent implements OnInit {
-  private fb = inject(FormBuilder);
   private customerService = inject(CustomerService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -60,11 +68,22 @@ export class CustomerFormComponent implements OnInit {
   isEditMode = false;
   customerId?: number;
 
-  customerForm: FormGroup = this.fb.group({
-    firstName: ['', [Validators.required, Validators.maxLength(50)]],
-    lastName: ['', [Validators.required, Validators.maxLength(50)]],
-    email: ['', [Validators.required, Validators.email, Validators.maxLength(100)]],
-    phone: ['', [Validators.maxLength(20)]]
+  readonly customerModel = signal<CustomerFormModel>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: ''
+  });
+
+  readonly customerForm = form(this.customerModel, (path) => {
+    required(path.firstName);
+    maxLength(path.firstName, 50);
+    required(path.lastName);
+    maxLength(path.lastName, 50);
+    required(path.email);
+    email(path.email);
+    maxLength(path.email, 100);
+    maxLength(path.phone, 20);
   });
 
   ngOnInit() {
@@ -79,7 +98,7 @@ export class CustomerFormComponent implements OnInit {
   loadCustomer(id: number) {
     this.customerService.getById(id).subscribe({
       next: (customer) => {
-        this.customerForm.patchValue({
+        this.customerModel.set({
           firstName: customer.firstName,
           lastName: customer.lastName,
           email: customer.email,
@@ -89,13 +108,21 @@ export class CustomerFormComponent implements OnInit {
     });
   }
 
-  onSubmit() {
-    if (this.customerForm.invalid) {
-      this.customerForm.markAllAsTouched();
+  onSubmit(event: Event) {
+    event.preventDefault();
+
+    if (this.customerForm().invalid()) {
+      this.customerForm().markAsTouched();
       return;
     }
 
-    const request: CustomerRequest = this.customerForm.value;
+    const value = this.customerForm().value();
+    const request: CustomerRequest = {
+      firstName: value.firstName,
+      lastName: value.lastName,
+      email: value.email,
+      phone: value.phone || undefined
+    };
 
     if (this.isEditMode && this.customerId) {
       this.customerService.update(this.customerId, request).subscribe({

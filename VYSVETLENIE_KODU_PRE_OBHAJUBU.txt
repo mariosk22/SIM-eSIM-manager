@@ -1,0 +1,438 @@
+================================================================================
+VYSVETLENIE KÓDU PRE OBAJUBU - SIM/eSIM Lifecycle Manager
+================================================================================
+
+Tento súbor slúži na to, aby si vedel presne pochopiť každý podstatný kus kódu
+a vedel ho obhájiť na prezentácii/obhajobe.
+
+Projekt obsahuje:
+- backend/ (Spring Boot 3.3.4, Java 21, Spring Security + JWT, JPA/Hibernate, Flyway, PostgreSQL)
+- frontend/ (Angular 22.3, Standalone komponenty, Signal Forms, HttpClient, Guards, Interceptory)
+- docker-compose.yml (PostgreSQL)
+- README.md (návod na spustenie)
+
+Cieľ: evidovať SIM karty (SimCard) a zákazníkov (Customer), CRUD operácie, prihlasovanie, ochrana routov, validácie, odchyt chýb do DOM (nie do konzoly).
+
+Testovací účet: admin / admin123
+
+================================================================================
+1. BACKEND - ŠTRUKTÚRA A ZÁKLAD
+================================================================================
+
+1.1 backend/pom.xml
+-------------------
+Obsahuje všetky potrebné závislosti:
+- spring-boot-starter-web        -> REST API
+- spring-boot-starter-data-jpa   -> práca s JPA/Hibernate
+- spring-boot-starter-validation -> @Valid, Bean Validation
+- spring-boot-starter-security   -> Spring Security
+- postgresql                     -> JDBC driver pre PostgreSQL
+- flyway-core + flyway-database-postgresql -> migrácie DB
+- jjwt-api/impl/jackson          -> JWT tokeny
+- spring-boot-devtools           -> pohodlie pri vývoji
+- spring-boot-starter-test       -> testovanie
+
+1.2 backend/src/main/java/sk/kosickaakademia/simesim/SimEsimApplication.java
+------------------------------------------------------------------------------
+package ... -> určuje balík triedy
+@SpringBootApplication -> kombinuje @Configuration, @EnableAutoConfiguration, @ComponentScan
+SpringApplication.run(...) -> štartuje celú Spring Boot aplikáciu (nahádza komponenty, konfiguruje kontext)
+
+1.3 backend/src/main/resources/application.properties
+------------------------------------------------------
+server.port=8080                        -> port backendu
+spring.datasource.*                    -> pripojenie na PostgreSQL (docker-compose)
+spring.jpa.hibernate.ddl-auto=none     -> NEVYTVÁRA tabuľky automaticky, používame Flyway
+spring.jpa.show-sql=false              -> v produkčnom štýle vypnuté vypisovanie SQL
+spring.flyway.enabled=true             -> zapnuté migrácie
+app.jwt.secret                         -> tajný kľúč na podpis JWT
+app.jwt.expiration-ms                  -> platnosť tokenu (24h)
+app.cors.allowed-origins               -> povolený frontend http://localhost:4200
+
+
+================================================================================
+2. BACKEND - MODEL (ENTITKY A ENUMY)
+================================================================================
+
+2.1 model/SimType.java
+----------------------
+enum PHYSICAL, ESIM -> typ SIM karty
+
+2.2 model/SimStatus.java
+------------------------
+enum IN_STOCK, RESERVED, ASSIGNED, ACTIVE, SUSPENDED, TERMINATED -> životný cyklus SIM karty (na demonštráciu stavov)
+
+2.3 model/Customer.java
+-----------------------
+@Entity -> označuje triedu ako JPA entitu mapovanú na tabuľku
+@Table(name="customers")
+@Id + @GeneratedValue(strategy = GenerationType.IDENTITY) -> primárny kľúč s autoinkrementom
+@Column(nullable=false, unique=true, ...) -> obmedzenia na DB úrovni
+@PrePersist -> pred prvým uložením nastaví createdAt/updatedAt
+@PreUpdate  -> pri aktualizácii nastaví updatedAt
+Gettery/settery -> potrebné pre JPA/Hibernate
+
+2.4 model/SimCard.java
+----------------------
+@Entity @Table(name="sim_cards")
+@ManyToOne(fetch = FetchType.LAZY) -> vzťah N:1 ku Customer (mnoho SIM môže patriť jednému zákazníkovi)
+@JoinColumn(name="customer_id") -> cudzie kľúč
+@Enumerated(EnumType.STRING) -> enum sa uloží ako TEXT/STRING (čitateľnejšie v DB ako číslo)
+@PrePersist nastaví status na IN_STOCK ak nie je zadaný
+Väzba customer môže byť null (SIM ešte nie je priradená zákazníkovi)
+
+2.5 model/AppUser.java
+----------------------
+Tabuľka app_users na autentifikáciu. Obsahuje username, password (BCrypt hash), role.
+Používame na overenie pri logine cez Spring Security.
+
+
+================================================================================
+3. BACKEND - REPOZITÁRE
+================================================================================
+
+Všetky rozširujú JpaRepository<Entity, ID> -> získame hotové metódy findAll, findById, save, deleteById.
+
+3.1 SimCardRepository
+---------------------
+existsByIccid(String iccid) -> kontrola duplicity ICCID
+findByIccid(String iccid)    -> vyhľadanie podľa ICCID
+
+3.2 CustomerRepository
+----------------------
+existsByEmail(String email) -> kontrola duplicity emailu
+findByEmail(String email)   -> vyhľadanie podľa emailu
+
+3.3 AppUserRepository
+---------------------
+findByUsername(String username) -> potrebuje UserDetailsService na načítanie používateľa
+
+
+================================================================================
+4. BACKEND - DTO (DATA TRANSFER OBJECTS)
+================================================================================
+
+DTO sa používajú na to, aby sme neposielali priamo entity von cez REST. Oddelíme tak DB štruktúru od API kontraktu.
+
+4.1 LoginRequest / LoginResponse
+--------------------------------
+LoginRequest -> prijíma username + password (s @Valid)
+LoginResponse -> vracia token, username, role
+
+4.2 SimCardRequest / SimCardResponse
+------------------------------------
+SimCardRequest  -> vstup pri POST/PUT (validácia @NotBlank, @Size)
+SimCardResponse -> výstup pre frontend (vracia aj customerId + customerName pre jednoduchšie zobrazenie v tabuľke)
+
+4.3 CustomerRequest / CustomerResponse
+---------------------------------------
+CustomerRequest obsahuje validáciu @NotBlank, @Email. CustomerResponse vracia údaje zákazníka.
+
+
+================================================================================
+5. BACKEND - VÝNIMKY A GLOBALNY EXCEPTION HANDLER
+================================================================================
+
+5.1 exception/ResourceNotFoundException.java
+--------------------------------------------
+Vlastná výnimka -> použijeme keď entita neexistuje (404 logika)
+
+5.2 exception/ApiException.java
+-------------------------------
+Vlastná výnimka -> biznis chyby (duplicitný ICCID/email) (400)
+
+5.3 exception/GlobalExceptionHandler.java
+-----------------------------------------
+@RestControllerAdvice -> zachytáva výnimky vo všetkých kontroléroch
+@ExceptionHandler(ResourceNotFoundException.class) -> vráti 404 + user-friendly message
+@ExceptionHandler(ApiException.class)              -> vráti 400 + message
+@ExceptionHandler(MethodArgumentNotValidException.class) -> spracuje chyby z @Valid, vráti zoznam chýb
+@ExceptionHandler(Exception.class)                 -> fallback 500
+
+Dôležité: frontend nikdy nezobrazuje kompletný stack trace, len "message" z tohto JSONu.
+
+
+================================================================================
+6. BACKEND - BEZPEČNOSŤ, JWT, AUTH
+================================================================================
+
+6.1 security/JwtUtil.java
+-------------------------
+@Component
+generateToken(username) -> vytvorí JWT s subject=username, issuedAt, expiration, podpísaný HMAC
+extractUsername(token)  -> vyberie username z tokenu
+isTokenValid(token, username) -> porovná username + overí expiráciu
+Keys.hmacShaKeyFor(...) -> vytvorí SecretKey z app.jwt.secret
+Jwts.parser()... -> parsovanie a validácia podpisu
+
+6.2 service/UserDetailsServiceImpl.java
+----------------------------------------
+implements UserDetailsService
+loadUserByUsername(username) -> nájde AppUser v DB, ak nenájde -> UsernameNotFoundException
+Vracia org.springframework.security.core.userdetails.User s username, password(hash), kolekciou SimpleGrantedAuthority(role)
+
+6.3 security/JwtAuthFilter.java
+-------------------------------
+extends OncePerRequestFilter -> spustí sa raz na request
+Z hlavičky "Authorization: Bearer ..." extrahuje token
+Ak token platný -> vytvorí UsernamePasswordAuthenticationToken a nastaví ho do SecurityContextHolder
+Tým sa Spring Security dozvie, že request je autentifikovaný
+
+6.4 config/SecurityConfig.java
+------------------------------
+@EnableWebSecurity
+.csrf(csrf -> csrf.disable()) -> pre REST API bez session formuláru bežne vypnuté
+.cors(...) -> povolí volania z http://localhost:4200
+.authorizeHttpRequests -> /api/auth/** permitAll, všetko ostatné authenticated
+.sessionManagement -> STATELESS (žiadne HTTP session, len JWT)
+.authenticationProvider -> DaoAuthenticationProvider s UserDetailsService + BCryptPasswordEncoder
+.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class) -> náš JWT filter ide pred štandardný
+PasswordEncoder Bean -> BCryptPasswordEncoder (hashovanie hesiel)
+
+6.5 config/DataInitializer.java
+-------------------------------
+CommandLineRunner sa spustí pri štarte aplikácie
+Nájde používateľa "admin", ak neexistuje vytvorí ho, inak aktualizuje
+Vždy nastaví passwordEncoder.encode("admin123") -> zabezpečí správny BCrypt hash (riešenie problému s nesediacim hashom z migrácie)
+
+
+================================================================================
+7. BACKEND - SERVISY A KONTROLÉRY
+================================================================================
+
+7.1 service/SimCardService.java
+------------------------------
+@Transactional(readOnly=true) pre GET
+@Transactional pre create/update/delete
+create() -> kontrola duplicity iccid (ApiException), priradenie customer ak customerId zadané
+update() -> kontrola duplicity pri zmene iccid, prípadné odpojenie zákazníka ak customerId null
+toResponse() -> mapuje entity na DTO (zjednoduší pre frontend)
+
+7.2 service/CustomerService.java
+-------------------------------
+Podobné ako SimCardService, kontrola duplicity emailu
+
+7.3 controller/AuthController.java
+----------------------------------
+POST /api/auth/login
+Volá authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(...))
+Ak správne -> vygeneruje JWT cez jwtUtil.generateToken -> vráti LoginResponse
+
+7.4 controller/SimCardController.java
+-------------------------------------
+@RestController @RequestMapping("/api/sims")
+GET    /api/sims      -> všetky
+GET    /api/sims/{id} -> detail
+POST   /api/sims      -> vytvorenie (@Valid)
+PUT    /api/sims/{id} -> úprava
+DELETE /api/sims/{id} -> zmazanie
+Všetky chránené SecurityConfigom (potrebný token)
+
+7.5 controller/CustomerController.java
+--------------------------------------
+Rovnaké CRUD ako SimCard pod /api/customers
+
+
+================================================================================
+8. BACKEND - FLYWAY MIGRÁCIE
+================================================================================
+
+8.1 db/migration/V1__init_schema.sql
+------------------------------------
+Vytvorí tabuľky app_users, customers, sim_cards
+Pridá indexy pre rýchlejšie vyhľadávanie (iccid, email, status)
+ON DELETE SET NULL pri väzbe sim_cards.customer_id -> ak sa zmaže zákazník, SIM ostane v systéme bez priradenia
+
+8.2 db/migration/V2__insert_test_user_and_data.sql
+--------------------------------------------------
+Vloží testovacieho admina + 3 zákazníkov + 5 vzorových SIM kariet
+(Neskôr je hash hesla "prepísaný" DataInitializerom, čo je v poriadku)
+
+
+================================================================================
+9. FRONTEND - ZÁKLADNÉ SÚBORY
+================================================================================
+
+9.1 src/main.ts
+---------------
+bootstrapApplication(AppComponent, appConfig) -> štart standalone aplikácie
+
+9.2 src/index.html
+------------------
+Základný HTML, <app-root></app-root>
+
+9.3 src/styles.css
+------------------
+Jednoduché CSS triedy (.container, .card, .btn, .form-group, .error-text) na rýchle formátovanie
+
+9.4 src/app/app.config.ts
+-------------------------
+provideRouter(routes)
+provideHttpClient(withInterceptors([authInterceptor, errorInterceptor]))
+authInterceptor ide PRVÝ -> pridá Authorization header
+errorInterceptor -> zachytí chyby
+
+9.5 src/app/app.routes.ts
+-------------------------
+'' -> redirect na '/sims'
+'/login' -> lazy load login komponent
+'/sims', '/sims/add', '/sims/edit/:id' -> chránené authGuard
+'/customers', '/customers/add', '/customers/edit/:id' -> chránené authGuard
+'**' -> fallback
+
+9.6 src/app/app.component.ts
+----------------------------
+Šablóna: <app-navbar>, <app-error-alert>, <router-outlet>
+Navbar sa zobrazuje vždy, error-alert sa zobrazí len ak ErrorService.error() nie je null
+
+
+================================================================================
+10. FRONTEND - CORE (MODELY, SLUŽBY, AUTH, GUARD, INTERCEPTORY)
+================================================================================
+
+10.1 core/models/*
+-----------------
+sim-card.model.ts   -> typy SimType, SimStatus, rozhrania SimCard, SimCardRequest
+customer.model.ts   -> Customer, CustomerRequest
+auth.model.ts       -> LoginRequest, LoginResponse
+
+10.2 core/services/sim.service.ts a customer.service.ts
+------------------------------------------------------
+inject(HttpClient)
+getAll/getById/create/update/delete volajú REST endpointy
+Všetky typované (Observable<SimCard[]>, atď.)
+
+10.3 core/services/error.service.ts
+-----------------------------------
+signal<string | null>(null)
+error = _error.asReadonly()
+setError() / clear()
+Slúži na prenesenie chybovej správy z interceptora priamo do komponentu
+
+10.4 core/auth/auth.service.ts
+-----------------------------
+isLoggedIn = signal<boolean>(this.hasToken())
+login() -> POST /api/auth/login, pri úspechu uloží token/username/role do localStorage, nastaví signal
+logout() -> odstráni z localStorage, nastaví signal na false, presmeruje na /login
+getToken() -> vráti token z localStorage
+
+10.5 core/guards/auth.guard.ts
+------------------------------
+CanActivateFn
+Kontroluje localStorage.getItem('token')
+Ak existuje -> return true
+Inak -> router.navigate(['/login']) + return false
+
+10.6 core/interceptors/auth.interceptor.ts
+------------------------------------------
+HttpInterceptorFn
+Vezme token z AuthService.getToken()
+Ak existuje -> req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })
+Inak pošle request bez hlavičky
+
+10.7 core/interceptors/error.interceptor.ts
+-------------------------------------------
+catchError(HttpErrorResponse)
+Z error.error sa snaží vytiahnuť user-friendly message (priorita: error.error.message)
+Špecifické správy pre 0, 401, 403, 404
+Volá errorService.setError(message) -> zobrazí sa v DOM
+Nikdy nepoužíva console.log/console.error
+return throwError(() => error) -> umožní ďalej spracovať ak treba
+
+
+================================================================================
+11. FRONTEND - SHARED (ZNOVUPOUŽITEĽNÉ KOMPONENTY)
+================================================================================
+
+11.1 shared/components/navbar/navbar.component.ts
+-------------------------------------------------
+Standalone komponent
+Zobrazuje menu len ak authService.isLoggedIn()
+Odkazy: SIM karty, Zákazníci, Prihlásenie/Odhlásiť sa
+Tlačidlo "Odhlásiť sa" volá authService.logout()
+
+11.2 shared/components/error-alert/error-alert.component.ts
+-----------------------------------------------------------
+inject(ErrorService)
+@if (errorService.error()) zobrazí červený alert
+Tlačidlo ✕ volá errorService.clear() na skrytie
+
+
+================================================================================
+12. FRONTEND - FEATURES
+================================================================================
+
+12.1 features/auth/login/login.component.ts
+-------------------------------------------
+Signal Forms (`@angular/forms/signals`): `signal<LoginModel>()` + `form(model, path => required(path.username), required(path.password))`
+<input [formField]="loginForm.username"> namiesto formControlName
+Chyba sa zobrazí cez `loginForm.username().touched() && loginForm.username().invalid()`
+onSubmit() -> ak validný zavolá authService.login(), pri next naviguje na /sims
+disabled ak formulár neplatný alebo loading
+
+12.2 features/sims/components/sim-list-item/sim-list-item.component.ts
+---------------------------------------------------------------------
+**RODIČ-DIEŤA KOMUNIKÁCIA**
+@Input() sim!: SimCard -> rodič (sims-list) posiela dáta dieťaťu
+@Output() edit = new EventEmitter<number>()
+@Output() delete = new EventEmitter<number>()
+Dieťa zobrazuje riadok tabuľky a emituje id rodičovi pri kliknutí
+
+12.3 features/sims/sims-list/sims-list.component.ts
+---------------------------------------------------
+Načítava zoznam cez SimService.getAll() v ngOnInit()
+Používa <app-sim-list-item> v @for
+onEdit(id) -> router.navigate(['/sims/edit', id])
+onDelete(id) -> confirm() + SimService.delete() + reload
+
+12.4 features/sims/sim-form/sim-form.component.ts
+-------------------------------------------------
+**Signal Forms** (`@angular/forms/signals`): `signal<SimFormModel>()` + `form(model, schema)`
+Validátory priamo v schéme: `required(path.iccid)`, `minLength(path.iccid, 19)`, `maxLength(path.iccid, 22)`, `required(path.type)`
+<input/select [formField]="simForm.iccid"> namiesto formControlName
+Ak je edit mód -> načíta dáta cez getById a `simModel.set({...})` (namiesto patchValue)
+onSubmit() -> create/update podľa isEditMode, hodnoty z `simForm().value()`
+[disabled]="simForm().invalid()"
+
+12.5 features/customers/customers-list/customers-list.component.ts
+-------------------------------------------------------------------
+CRUD zoznam zákazníkov, navigácia na add/edit, mazanie s confirm()
+
+12.6 features/customers/customer-form/customer-form.component.ts
+----------------------------------------------------------------
+Signal Forms: `required(path.firstName/lastName/email)`, `email(path.email)`, `maxLength(...)`
+[formField]="customerForm.email" + chyba cez `customerForm.email().touched() && .invalid()`
+Validácia na frontende + backend validácia @Valid
+
+
+================================================================================
+13. AKO TO VŠETKO FUNGUJE SPOLOČNE
+================================================================================
+
+1. Používateľ otvorí http://localhost:4200 -> app.routes presmeruje na /sims
+2. authGuard zistí, že nie je token -> presmeruje na /login
+3. Prihlásenie cez login formulár -> AuthService.login() pošle POST na /api/auth/login
+4. Backend overí cez AuthenticationManager + UserDetailsService + BCrypt -> vráti JWT
+5. Frontend uloží token do localStorage
+6. Pri ďalších requestoch authInterceptor pridá Authorization: Bearer <token>
+7. Backend JwtAuthFilter overí token -> nastaví autentifikáciu do SecurityContext
+8. Ak dôjde k chybe -> errorInterceptor ju spracuje a zobrazí cez ErrorService priamo v DOM (error-alert)
+9. CRUD operácie cez SimService/CustomerService idú na chránené REST endpointy
+
+
+================================================================================
+14. TIPY NA OBAJUBU
+================================================================================
+
+- **localStorage**: "Ukladal som JWT token do localStorage, aby som ho mohol poslať pri každom requeste cez interceptor."
+- **auth.guard**: "Chráni chránené routy, bez prihlásenia presmeruje na login."
+- **auth.interceptor**: "Pridáva Authorization header ku všetkým requestom okrem prípadu keď token chýba."
+- **error.interceptor + ErrorService**: "Chyby zo servera odchytávam, konvertujem na user-friendly text a zobrazujem priamo v DOM cez signal, nie do konzoly."
+- **rodič-dieťa (@Input/@Output)**: "V sims-list posielam objekt sim cez @Input do sim-list-item, dieťa cez @Output emituje edit/delete späť rodičovi."
+- **Signal Forms**: "Používam Angular 22 Signal Forms – model je `WritableSignal`, schéma s validátormi vznikne cez `form()`, prvky sú viazané cez `[formField]` a chyby zobrazujem cez `field().touched()` a `field().invalid()`. Nie je to klasický Reactive Forms – splnené kritérium je presne Signal Forms."
+- **JWT + Spring Security**: "Stateless autentifikácia - žiadna HTTP session, všetko riešené cez token."
+- **Flyway**: "Schéma sa nevytvára cez Hibernate, riadim ju migráciami."
+- **DTO pattern**: "Neposielam entity priamo, používam Request/Response DTO kvôli bezpečnosti a čistšiemu API."
+
+**Kľúč:** Nepovedz "som to skopíroval", povedz "použil som to preto, lebo..." 
+Ak rozumieš týmto bodom, projekt hravo obhájiš.
