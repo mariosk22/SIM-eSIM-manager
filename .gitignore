@@ -28,6 +28,9 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 
+# Lokalne poznamy na obhajobu (nekomituje sa)
+VYSVETLENIE_KODU_PRE_OBHAJUBU.txt
+
 # OS
 .DS_Store
 Thumbs.db
