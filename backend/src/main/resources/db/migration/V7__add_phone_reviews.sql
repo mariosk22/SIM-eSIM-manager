@@ -10,6 +10,14 @@ CREATE TABLE phone_reviews (
 CREATE INDEX idx_phone_reviews_sim_card ON phone_reviews(sim_card_id);
 CREATE INDEX idx_phone_reviews_created_at ON phone_reviews(created_at);
 
-INSERT INTO phone_reviews (sim_card_id, author, rating, comment, created_at) VALUES
-(4, 'admin', 5, 'Výborná eSIM, aktivácia bola rýchla a bez problémov.', '2025-03-12 10:30:00'),
-(4, 'admin', 4, 'Číslo funguje spoľahlivo, len podpora by mohla odpovedať rýchlejšie.', '2025-04-02 14:15:00');
+INSERT INTO phone_reviews (sim_card_id, author, rating, comment, created_at)
+SELECT id, 'admin', 5, 'Výborná eSIM, aktivácia bola rýchla a bez problémov.', NOW() - INTERVAL '2 days'
+FROM sim_cards
+ORDER BY id
+LIMIT 1;
+
+INSERT INTO phone_reviews (sim_card_id, author, rating, comment, created_at)
+SELECT id, 'admin', 4, 'Číslo funguje spoľahlivo, len podpora by mohla odpovedať rýchlejšie.', NOW() - INTERVAL '1 day'
+FROM sim_cards
+ORDER BY id
+LIMIT 1;
