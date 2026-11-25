@@ -15,6 +15,7 @@ import { SimCard } from '../../../../core/models/sim-card.model';
       <td>{{ sim.customerName || '-' }}</td>
       <td>
         <a [routerLink]="['/sims', sim.id, 'history']" class="btn btn-secondary" style="margin-right: 8px;">História</a>
+        <a [routerLink]="['/sims', sim.id, 'reviews']" class="btn btn-secondary" style="margin-right: 8px;">Recenzie</a>
         <button class="btn btn-secondary" style="margin-right: 8px;" (click)="edit.emit(sim.id)">Upraviť</button>
         <button class="btn btn-danger" (click)="delete.emit(sim.id)">Zmazať</button>
       </td>

@@ -14,6 +14,7 @@ import { AuthService } from '../../../core/auth/auth.service';
           <div class="nav-links">
             <a routerLink="/sims" routerLinkActive="active">SIM karty</a>
             <a routerLink="/customers" routerLinkActive="active">Zákazníci</a>
+            <a routerLink="/reviews" routerLinkActive="active">Recenzie</a>
             <button class="logout-btn" (click)="logout()">Odhlásiť sa</button>
           </div>
         } @else {

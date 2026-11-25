@@ -28,6 +28,16 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'sims/:id/reviews',
+    loadComponent: () => import('./features/reviews/sim-reviews/sim-reviews.component').then(m => m.SimReviewsComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'reviews',
+    loadComponent: () => import('./features/reviews/reviews-list/reviews-list.component').then(m => m.ReviewsListComponent),
+    canActivate: [authGuard]
+  },
+  {
     path: 'customers',
     loadComponent: () => import('./features/customers/customers-list/customers-list.component').then(m => m.CustomersListComponent),
     canActivate: [authGuard]

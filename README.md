@@ -2,7 +2,7 @@
 
 Tento projekt je vytvorený na účely školského zadania z Angularu. Používa **jeden** Angular projekt, ktorý volá vlastné Spring Boot REST API.
 
-Cieľom je evidencia a správa SIM kariet (`SimCard`) a zákazníkov (`Customer`) vrátane prihlasovania, CRUD operácií, validácií a odchytávania chýb.
+Cieľom je evidencia a správa SIM kariet (`SimCard`) a zákazníkov (`Customer`) vrátane prihlasovania, CRUD operácií, validácií a odchytávania chýb. Projekt tiež eviduje históriu vlastníctva SIM kariet (`SimAssignmentHistory`) a recenzie telefónnych čísel (`PhoneReview`).
 
 ## 1. Požiadavky
 
@@ -119,10 +119,11 @@ Po úspešnom prihlásení sa token uloží do `localStorage` a bude automaticky
 
 | Požiadavka | Stav |
 | --- | --- |
-| Zobrazovanie zoznamu entít | ÁNO (`/sims`, `/customers`) |
-| Všetky CRUD operácie pre vlastné entity cez REST | ÁNO (`SimCard`, `Customer`) |
+| Zobrazovanie zoznamu entít | ÁNO (`/sims`, `/customers`, `/reviews`) |
+| Všetky CRUD operácie pre vlastné entity cez REST | ÁNO (`SimCard`, `Customer`, `PhoneReview` – vytvorenie a čítanie recenzií) |
+| História priradení a reťaz vlastníctva v čase | ÁNO (`SimAssignmentHistory`, `/sims/:id/history`) |
 | Prihlasovací formulár + uloženie prihlásenia cez `localStorage` + použitie autentifikácie | ÁNO (`login`, `AuthService`, `auth.interceptor`) |
-| Formuláre na pridanie/úpravu cez **Signal Forms** + validátory (Angular 22) | ÁNO (`sim-form`, `customer-form`, `login` – `form()`, `[formField]`, `required()`, `email()`, `minLength()`, `maxLength()`) |
+| Formuláre na pridanie/úpravu cez **Signal Forms** + validátory (Angular 22) | ÁNO (`sim-form`, `customer-form`, `login`, `sim-reviews` – `form()`, `[formField]`, `required()`, `email()`, `minLength()`, `maxLength()`) |
 | Odchytávanie všetkých chýb komunikácie so serverom + user-friendly text do DOM (nie do konzoly) | ÁNO (`error.interceptor`, `ErrorService`, `error-alert`) |
 | Použitie aspoň jedného route guardu | ÁNO (`auth.guard`) |
 | Komunikácia rodič-dieťa (`@Input`, `@Output`) | ÁNO (`sim-list-item` komponenta) |
@@ -136,8 +137,11 @@ Po úspešnom prihlásení sa token uloží do `localStorage` a bude automaticky
 2. Choď do `SIM karty` -> vidíš zoznam načítaný zo servera
 3. Skús pridať novú SIM kartu cez formulár (používa **Angular 22 Signal Forms** + validáciu)
 4. Prejdi na `Zákazníci` a vyskúšaj CRUD aj pre druhú entitu
-5. Skús získať chránenú stránku bez tokenu -> presmeruje ťa na `/login` (funguje `auth.guard`)
-6. V prípade chyby zo servera sa zobrazí **červený alert v DOM**, žiaden výpis do konzoly
+5. Pri SIM karte klikni na `História` -> uvidíš reťaz vlastníctva v čase
+6. Pri SIM karte klikni na `Recenzie` -> pridaj hodnotenie a text, pozri si zoznam recenzií danej SIM
+7. Choď do `Recenzie` v navigácii -> uvidíš všetky recenzie naprieč SIM kartami
+8. Skús získať chránenú stránku bez tokenu -> presmeruje ťa na `/login` (funguje `auth.guard`)
+9. V prípade chyby zo servera sa zobrazí **červený alert v DOM**, žiaden výpis do konzoly
 
 ## 8. Poznámka
 
