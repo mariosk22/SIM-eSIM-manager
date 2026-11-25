@@ -1,5 +1,5 @@
 import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
-import { FormField, form, required, email, maxLength } from '@angular/forms/signals';
+import { FormField, form, required, email, maxLength, pattern } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CustomerService } from '../../../core/services/customer.service';
 import { CustomerRequest } from '../../../core/models/customer.model';
@@ -10,6 +10,9 @@ interface CustomerFormModel {
   email: string;
   phone: string;
 }
+
+const NAME_PATTERN = /^[\p{L}][\p{L} '-]*$/u;
+const PHONE_PATTERN = /^\+?[0-9]{9,19}$/;
 
 @Component({
   selector: 'app-customer-form',
@@ -25,7 +28,7 @@ interface CustomerFormModel {
             <label for="firstName">Meno *</label>
             <input id="firstName" type="text" [formField]="customerForm.firstName">
             @if (customerForm.firstName().touched() && customerForm.firstName().invalid()) {
-              <div class="error-text">Meno je povinné (max. 50 znakov)</div>
+              <div class="error-text">Meno môže obsahovať iba písmená (vrátane diakritiky), medzery, pomlčky a apostrofy (max. 50 znakov)</div>
             }
           </div>
 
@@ -33,7 +36,7 @@ interface CustomerFormModel {
             <label for="lastName">Priezvisko *</label>
             <input id="lastName" type="text" [formField]="customerForm.lastName">
             @if (customerForm.lastName().touched() && customerForm.lastName().invalid()) {
-              <div class="error-text">Priezvisko je povinné (max. 50 znakov)</div>
+              <div class="error-text">Priezvisko môže obsahovať iba písmená (vrátane diakritiky), medzery, pomlčky a apostrofy (max. 50 znakov)</div>
             }
           </div>
 
@@ -49,7 +52,7 @@ interface CustomerFormModel {
             <label for="phone">Telefón</label>
             <input id="phone" type="text" [formField]="customerForm.phone">
             @if (customerForm.phone().touched() && customerForm.phone().invalid()) {
-              <div class="error-text">Telefón môže mať max. 20 znakov</div>
+              <div class="error-text">Telefón môže obsahovať iba číslice, prípadne úvodné + (9 až 19 číslic)</div>
             }
           </div>
 
@@ -78,12 +81,14 @@ export class CustomerFormComponent implements OnInit {
   readonly customerForm = form(this.customerModel, (path) => {
     required(path.firstName);
     maxLength(path.firstName, 50);
+    pattern(path.firstName, NAME_PATTERN);
     required(path.lastName);
     maxLength(path.lastName, 50);
+    pattern(path.lastName, NAME_PATTERN);
     required(path.email);
     email(path.email);
     maxLength(path.email, 100);
-    maxLength(path.phone, 20);
+    pattern(path.phone, ({ value }) => (value() ? PHONE_PATTERN : undefined));
   });
 
   ngOnInit() {
