@@ -3,13 +3,14 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { SimCard, SimCardRequest } from '../models/sim-card.model';
 import { SimAssignmentHistory } from '../models/sim-assignment-history.model';
+import { API_BASE_URL } from '../config/api.config';
 
 @Injectable({
   providedIn: 'root'
 })
 export class SimService {
   private http = inject(HttpClient);
-  private apiUrl = 'http://localhost:8080/api/sims';
+  private apiUrl = `${API_BASE_URL}/api/sims`;
 
   getAll(): Observable<SimCard[]> {
     return this.http.get<SimCard[]>(this.apiUrl);

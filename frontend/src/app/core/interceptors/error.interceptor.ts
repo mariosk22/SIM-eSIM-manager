@@ -16,7 +16,7 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         } else if (error.error.message) {
           message = error.error.message;
         } else if (error.status === 0) {
-          message = 'Server nie je dostupný. Skontroluj, či beží backend na http://localhost:8080';
+          message = 'Server nie je dostupný. Skontroluj pripojenie k internetu alebo stav backendu.';
         } else if (error.status === 401) {
           message = 'Neautorizovaný prístup. Prosím prihlás sa znova.';
         } else if (error.status === 403) {

@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { Observable, tap } from 'rxjs';
 import { LoginRequest, LoginResponse } from '../models/auth.model';
+import { API_BASE_URL } from '../config/api.config';
 
 @Injectable({
   providedIn: 'root'
@@ -10,7 +11,7 @@ import { LoginRequest, LoginResponse } from '../models/auth.model';
 export class AuthService {
   private http = inject(HttpClient);
   private router = inject(Router);
-  private apiUrl = 'http://localhost:8080/api/auth';
+  private apiUrl = `${API_BASE_URL}/api/auth`;
 
   private _isLoggedIn = signal<boolean>(this.hasToken());
   isLoggedIn = this._isLoggedIn.asReadonly();
