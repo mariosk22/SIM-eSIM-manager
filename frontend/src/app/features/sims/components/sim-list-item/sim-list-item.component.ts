@@ -1,10 +1,11 @@
 import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
+import { RouterLink } from '@angular/router';
 
 import { SimCard } from '../../../../core/models/sim-card.model';
 
 @Component({
     selector: 'tr[app-sim-list-item]',
-    imports: [],
+    imports: [RouterLink],
     changeDetection: ChangeDetectionStrategy.Eager,
     template: `
       <td>{{ sim.iccid }}</td>
@@ -13,6 +14,7 @@ import { SimCard } from '../../../../core/models/sim-card.model';
       <td>{{ sim.status }}</td>
       <td>{{ sim.customerName || '-' }}</td>
       <td>
+        <a [routerLink]="['/sims', sim.id, 'history']" class="btn btn-secondary" style="margin-right: 8px;">História</a>
         <button class="btn btn-secondary" style="margin-right: 8px;" (click)="edit.emit(sim.id)">Upraviť</button>
         <button class="btn btn-danger" (click)="delete.emit(sim.id)">Zmazať</button>
       </td>

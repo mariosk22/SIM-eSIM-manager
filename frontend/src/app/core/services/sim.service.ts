@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { SimCard, SimCardRequest } from '../models/sim-card.model';
+import { SimAssignmentHistory } from '../models/sim-assignment-history.model';
 
 @Injectable({
   providedIn: 'root'
@@ -28,5 +29,9 @@ export class SimService {
 
   delete(id: number): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/${id}`);
+  }
+
+  getHistory(simId: number): Observable<SimAssignmentHistory[]> {
+    return this.http.get<SimAssignmentHistory[]>(`${this.apiUrl}/${simId}/history`);
   }
 }

@@ -13,6 +13,10 @@ Projekt obsahuje:
 
 Cieľ: evidovať SIM karty (SimCard) a zákazníkov (Customer), CRUD operácie, prihlasovanie, ochrana routov, validácie, odchyt chýb do DOM (nie do konzoly).
 
+Rozšírenie presne podľa zadania (pridávané postupne, každú časť samostatne):
+- ČASŤ 1: SimAssignmentHistory - história priradení SIM kariet zákazníkom, reťaz vlastníctva v čase (kapitola 15)
+- ČASŤ 2: PhoneReview - recenzie ku konkrétnym telefónnym číslam (kapitola 16, pripravuje sa)
+
 Testovací účet: admin / admin123
 
 ================================================================================
@@ -436,3 +440,161 @@ Validácia na frontende + backend validácia @Valid
 
 **Kľúč:** Nepovedz "som to skopíroval", povedz "použil som to preto, lebo..." 
 Ak rozumieš týmto bodom, projekt hravo obhájiš.
+
+
+================================================================================
+15. ČASŤ 1 PODĽA ZADANIA: SimAssignmentHistory (HISTÓRIA VLASTNÍCTVA SIM)
+================================================================================
+
+Zadanie hovorí: „Umožňuje dohľadať, kto bol predchádzajúcim vlastníkom daného
+čísla, sledovať reťaz vlastníctva v čase." Pôvodný model mal v tabuľke sim_cards
+len stĺpec customer_id, čiže poznal iba SÚČASNÉHO zákazníka. Históriu sme preto
+doplnili ako novú entitu SimAssignmentHistory.
+
+15.1 Nová entita: backend/.../model/SimAssignmentHistory.java
+--------------------------------------------------------------
+Každý riadok = jedno obdobie, počas ktorého mala SIM karta priradeného zákazníka.
+
+Polia:
+- id                  - primárny kľúč (BIGSERIAL)
+- simCard             - vzťah @ManyToOne na SimCard, FK sim_card_id, NOT NULL
+                        (jedna SIM má veľa záznamov histórie)
+- customer            - vzťah @ManyToOne na Customer, FK customer_id, nullable
+                        (ak je SIM vrátená do skladu, zákazník chýba)
+- assignedAt          - keď sa priradenie začalo (@PrePersist doplní terajší čas)
+- unassignedAt        - keď sa priradenie skončilo; NULL = stále aktuálny vlastník
+- note                - voliteľná poznámka (napr. „Predchádzajúci vlastník čísla")
+
+Kľúčová myšlienka: reťaz vlastníctva nie je uložený ako jeden objekt, ale ako
+postupnosť záznamov. Uzavretie starého záznamu + otvorenie nového = jeden krok
+zmeny vlastníka. Vďaka tomu vieme spätne dohľadať všetkých predchádzajúcich
+vlastníkov konkrétneho telefónneho čísla (ICCID).
+
+15.2 Flyway migrácia: V3__add_sim_assignment_history.sql
+---------------------------------------------------------
+Tabuľka sim_assignment_history:
+- sim_card_id BIGINT NOT NULL REFERENCES sim_cards(id) ON DELETE CASCADE
+  -> keď zmažem SIM kartu, história sa zmaže automaticky (žiadne osirolé dáta)
+- customer_id BIGINT REFERENCES customers(id) ON DELETE SET NULL
+  -> keď zmažem zákazníka, záznam histórie zostane, len sa odpojí meno
+- indexy na sim_card_id, customer_id a assigned_at -> rýchle vyhľadávanie
+
+V migrácii sú aj vzorové dáta pre demo pri obhajobe:
+- SIM 1: uzavretý záznam (číslo bolo vrátené do skladu)
+- SIM 3: aktuálny záznam so zákazníkom Ján Novák
+- SIM 4: dva záznamy -> Peter Horváth bol PREDCHÁDZAJÚCI vlastník,
+         Mária Kováčová je AKTUÁLNY vlastník. Toto je ten „reťaz v čase".
+
+Následná migrácia V4__update_demo_history_note.sql upravuje iba poznámku prvého
+(aktuálneho) demo záznamu na „Vlastník bol vytvorený" - záznam predchádzajúceho
+vlastníka zostáva nezmenený. V4 je samostatná migrácia práve preto, že V3 už bola
+v databáze aplikovaná a Flyway by pri zmene jej obsahu vyhodil chybu checksumu.
+Pri čistej inštalácii sa vykoná V3 aj V4, výsledok je rovnaký.
+
+V5__fix_demo_history_note.sql je oprava V4: keďže sa medzičasom demo záznam
+uzavrel zmenou vlastníka cez formulár, podmienka V4 (unassigned_at IS NULL)
+už nesedela a V4 žiadny riadok neupravila. V5 vyberá záznam podľa textu
+poznámky, takže poznámka sa zmení aj pri uzavretom zázname. Ostatné dáta
+(vrátane záznamu „Predchádzajúci vlastník čísla") sú nedotknuté.
+
+V6__swap_demo_history_notes.sql nakoniec vymení tieto dve poznámky medzi
+pôvodnými demo záznamami, aby dávali logický zmysel: starší záznam
+(Peter Horváth, 2023) nesie „Vlastník bol vytvorený", novší záznam
+(Mária Kováčová, 2025) nesie „Predchádzajúci vlastník čísla".
+Použitý je CASE + dočasná výmena v jedinom UPDATE, aby nedošlo ku kolízii
+unikátnych hodnôt. Ostatné záznamy histórie sa nemenia.
+
+15.3 Repozitár: SimAssignmentHistoryRepository.java
+------------------------------------------------------
+Dve odvodené dotazovacie metódy (Spring Data ich vygeneruje z názvu):
+- findBySimCardIdOrderByAssignedAtDesc(simId) -> celá časová os, najnovšie hore
+- findBySimCardIdAndUnassignedAtIsNull(simId) -> nájde otvorený/é záznamy,
+  ktoré treba uzavrieť pri zmene vlastníka
+
+15.4 DTO: AssignmentHistoryResponse.java
+------------------------------------------
+Entitu nikdy neposielam priamo na frontend (DTO pattern). Response obsahuje
+id, simCardId, iccid, customerId, customerName, assignedAt, unassignedAt,
+active a note. Pole active je vypočítané: true práve vtedy, keď unassignedAt
+je NULL. Frontend podľa neho zobrazí „Aktuálny vlastník" / „Predchádzajúci
+vlastník".
+
+15.5 Servis: SimAssignmentHistoryService.java
+-----------------------------------------------
+getHistoryForSim(simId):
+- najprv overí, že SIM karta existuje (inak ResourceNotFoundException -> 404)
+- vytiahne záznamy z repozitára a premapuje ich na DTO
+
+recordAssignment(simCard, customer, note):
+- zavolá closeOpenAssignments(), ktoré všetkým otvoreným záznamom danej SIM
+  nastaví unassignedAt = LocalDateTime.now()
+- ak je nový zákazník != null, vytvorí nový záznam s assignedAt = now()
+- ak je zákazník null (SIM ide do skladu), nový záznam nevznikne -> história
+  sa len uzavrie. Presne to zodpovedá reálnemu životu SIM karty.
+
+15.6 Automatické zapisovanie histórie v SimCardService.java
+-------------------------------------------------------------
+Do servisu som pridal SimAssignmentHistoryService ako závislosť.
+
+create():
+- po uložení novej SIM karty, ak má customer_id, založí prvý záznam histórie
+
+update():
+- pred zmenou si odložím oldCustomerId z pôvodnej SIM karty
+- po uložení porovnám oldCustomerId s newCustomerId cez Objects.equals()
+- ak sa líšia -> zavolám recordAssignment(...)
+- ak sa zhodujú (zmenila sa len poznámka alebo stav) -> história sa nemení.
+  Tým sa zabráni zbytočným „duplicitným" záznamom.
+
+delete():
+- história sa odstráni cez ON DELETE CASCADE na úrovni databázy
+
+15.7 REST endpoint: AssignmentHistoryController.java
+------------------------------------------------------
+GET /api/sims/{simId}/history -> 200 + zoznam AssignmentHistoryResponse
+Endpoint je pod /api/sims, takže ho automaticky chráni JWT filter a rovnaký
+authInterceptor na fronte ako ostatné SIM endpointy.
+
+15.8 Frontend
+--------------
+- core/models/sim-assignment-history.model.ts -> interface SimAssignmentHistory
+- core/services/sim.service.ts -> nová metóda getHistory(simId) volajúca
+  GET /api/sims/{id}/history
+- features/sims/sim-history/sim-history.component.ts -> samostatná obrazovka:
+  * načíta SIM kartu (kvôli ICCID a stavu) a jej históriu paralelne
+  * dáta drží v signaloch (sim, history, loading) - konzistentné so Signal Forms
+  * tabuľka s stĺpcami Zákazník / Priradené / Ukončené / Stav záznamu / Poznámka
+  * DatePipe formátuje dátumy na d.M.yyyy H:mm
+  * cez @empty zobrazí „Zatiaľ žiadna história priradení"
+- app.routes.ts -> nová chránená trasa /sims/:id/history
+- sim-list-item.component.ts -> v poslednom stĺpci pribudol odkaz „História"
+  (RouterLink). Pôvodná oprava zarovnania tabuľky zostala nedotknutá -
+  hostiteľ je stále <tr app-sim-list-item> a bunky sú priamymi deťmi <tr>.
+
+15.9 Ako to ukázať na obhajobe (demo)
+--------------------------------------
+1. Prihlásiť sa ako admin / admin123
+2. Otvoriť SIM karty -> pri SIM s ICCID 8904212345678901237 kliknúť „História"
+3. Ukázať dva riadky: Peter Horváth (Predchádzajúci vlastník, ukončené 10.3.2025)
+   a Mária Kováčová (Aktuálny vlastník). To je odpoveď na „dohľadaj predchádzajúceho
+   vlastníka".
+4. Vrátiť sa na SIM karty, otvoriť „Upraviť" pri tej istej SIM, zmeniť zákazníka
+   na Jána Nováka a uložiť.
+5. Znovu otvoriť História -> pribudne nový záznam, Mária Kováčová má vyplnené
+   „Ukončené" a Ján Novák je nový aktuálny vlastník. Dôkaz, že história sa
+   zapisuje automaticky, nie ručne.
+
+15.10 Možné otázky komisie a odpovede
+--------------------------------------
+- „Prečo ste históriu riešili novou entitou a nie iba stĺpcom v SimCard?"
+  -> Pretože jeden stĺpec uchová len súčasný stav. Na reťaz vlastníctva treba
+     záznamy s časovým obdobím (assigned_at / unassigned_at).
+- „Čo sa stane, keď zmažete zákazníka?"
+  -> FK ON DELETE SET NULL zachová históriu, len sa odpojí meno zákazníka.
+- „Ako zabránite duplicite pri každom uložení formulára?"
+  -> Porovnávam oldCustomerId a newCustomerId; história sa zapíše len pri reálnej
+     zmene vlastníka.
+- „Prečo DTO a nie entita priamo?"
+  -> Nechcem frontendu posielať JPA vzťahy a interné detaily; DTO je stabilná
+     zmluva API a pole active je už vypočítané na serveri.
+

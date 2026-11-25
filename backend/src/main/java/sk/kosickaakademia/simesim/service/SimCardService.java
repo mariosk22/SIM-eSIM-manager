@@ -18,10 +18,14 @@ public class SimCardService {
 
     private final SimCardRepository simCardRepository;
     private final CustomerRepository customerRepository;
+    private final SimAssignmentHistoryService assignmentHistoryService;
 
-    public SimCardService(SimCardRepository simCardRepository, CustomerRepository customerRepository) {
+    public SimCardService(SimCardRepository simCardRepository,
+                          CustomerRepository customerRepository,
+                          SimAssignmentHistoryService assignmentHistoryService) {
         this.simCardRepository = simCardRepository;
         this.customerRepository = customerRepository;
+        this.assignmentHistoryService = assignmentHistoryService;
     }
 
     @Transactional(readOnly = true)
@@ -58,6 +62,11 @@ public class SimCardService {
         }
 
         SimCard saved = simCardRepository.save(simCard);
+
+        if (saved.getCustomer() != null) {
+            assignmentHistoryService.recordAssignment(saved, saved.getCustomer(),
+                    "SIM karta bola vytvorená s priradením zákazníka");
+        }
         return toResponse(saved);
     }
 
@@ -65,6 +74,8 @@ public class SimCardService {
     public SimCardResponse update(Long id, SimCardRequest request) {
         SimCard simCard = simCardRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("SIM karta s ID " + id + " nebola nájdená"));
+
+        Long oldCustomerId = simCard.getCustomer() != null ? simCard.getCustomer().getId() : null;
 
         if (!simCard.getIccid().equals(request.getIccid()) && simCardRepository.existsByIccid(request.getIccid())) {
             throw new ApiException("SIM karta s týmto ICCID už existuje");
@@ -87,6 +98,12 @@ public class SimCardService {
         }
 
         SimCard saved = simCardRepository.save(simCard);
+
+        Long newCustomerId = saved.getCustomer() != null ? saved.getCustomer().getId() : null;
+        if (!java.util.Objects.equals(oldCustomerId, newCustomerId)) {
+            assignmentHistoryService.recordAssignment(saved, saved.getCustomer(),
+                    "Zmena vlastníka cez formulár SIM karty");
+        }
         return toResponse(saved);
     }
 

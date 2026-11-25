@@ -23,6 +23,11 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'sims/:id/history',
+    loadComponent: () => import('./features/sims/sim-history/sim-history.component').then(m => m.SimHistoryComponent),
+    canActivate: [authGuard]
+  },
+  {
     path: 'customers',
     loadComponent: () => import('./features/customers/customers-list/customers-list.component').then(m => m.CustomersListComponent),
     canActivate: [authGuard]
